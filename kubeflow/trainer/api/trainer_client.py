@@ -45,13 +45,25 @@ class TrainerClient:
 
         Args:
             backend_config: Backend configuration. Either KubernetesBackendConfig,
-                            LocalProcessBackendConfig, ContainerBackendConfig,
-                            or None to use the backend's default config class.
-                            Defaults to KubernetesBackendConfig.
+                LocalProcessBackendConfig, ContainerBackendConfig, or None to use 
+                the backend's default config class. Defaults to 
+                KubernetesBackendConfig.
 
         Raises:
-            ValueError: Invalid backend configuration.
+            ValueError: If the provided `backend_config` is invalid.
 
+        Example:
+            Initialize with the default Kubernetes backend:
+
+            from kubeflow.trainer import TrainerClient
+
+            client = TrainerClient()
+
+            Initialize with a local process backend:
+
+            from kubeflow.trainer import TrainerClient, LocalProcessBackendConfig
+
+            client = TrainerClient(backend_config=LocalProcessBackendConfig())
         """
         # Set the default backend config.
         if not backend_config:
@@ -67,38 +79,70 @@ class TrainerClient:
             raise ValueError(f"Invalid backend config '{backend_config}'")
 
     def list_runtimes(self) -> list[types.Runtime]:
-        """List of the available runtimes.
+        """List the available Training Runtimes.
 
         Returns:
-            A list of available training runtimes. If no runtimes exist, an empty list is returned.
+            list[kubeflow.trainer.types.Runtime]: A list of available training 
+                runtimes. If no runtimes exist, an empty list is returned.
 
         Raises:
-            TimeoutError: Timeout to list runtimes.
-            RuntimeError: Failed to list runtimes.
+            TimeoutError: If the request to list runtimes times out.
+            RuntimeError: If the client fails to list runtimes.
+
+        Example:
+            from kubeflow.trainer import TrainerClient
+
+            client = TrainerClient()
+            runtimes = client.list_runtimes()
+
+            for runtime in runtimes:
+                print(f"Runtime: {runtime.name}")
         """
         return self.backend.list_runtimes()
 
     def get_runtime(self, name: str) -> types.Runtime:
-        """Get the runtime object
+        """Get information about a specific Training Runtime.
+
         Args:
-            name: Name of the runtime.
+            name: The name of the Training Runtime to retrieve.
 
         Returns:
-            A runtime object.
+            kubeflow.trainer.types.Runtime: The Training Runtime object.
+
+        Raises:
+            ValueError: If the runtime `name` is invalid or not found.
+            TimeoutError: If checking for the Training Runtime times out.
+            RuntimeError: If the backend fails to retrieve the Training Runtime.
+
+        Example:
+            from kubeflow.trainer import TrainerClient
+
+            client = TrainerClient()
+            runtime = client.get_runtime(name="pytorch-distributed")
         """
         return self.backend.get_runtime(name=name)
 
     def get_runtime_packages(self, runtime: types.Runtime):
-        """Print the installed Python packages for the given runtime. If a runtime has GPUs it also
-        prints available GPUs on the single training node.
+        """Print the installed Python packages for the given Training Runtime. 
+        
+        If the Training Runtime supports GPUs, it also prints available GPU 
+        information for the training node.
 
         Args:
-            runtime: Reference to one of existing runtimes.
+            runtime: A reference to an existing Training Runtime object, 
+                typically obtained via `get_runtime` or `list_runtimes`.
 
         Raises:
-            ValueError: Input arguments are invalid.
-            RuntimeError: Failed to get Runtime.
+            ValueError: If the input arguments are invalid.
+            RuntimeError: If the client fails to get package information for 
+                the Training Runtime.
 
+        Example:
+            from kubeflow.trainer import TrainerClient
+
+            client = TrainerClient()
+            runtime = client.get_runtime(name="pytorch-distributed")
+            client.get_runtime_packages(runtime=runtime)
         """
         return self.backend.get_runtime_packages(runtime=runtime)
 
@@ -111,33 +155,45 @@ class TrainerClient:
         ] = None,
         options: Optional[list] = None,
     ) -> str:
-        """Create a TrainJob. You can configure the TrainJob using one of these trainers:
-
-        - CustomTrainer: Runs training with a user-defined function that fully encapsulates the
-            training process.
-        - CustomTrainerContainer: Runs training with a user-defined image that fully encapsulates
-            the training process.
-        - BuiltinTrainer: Uses a predefined trainer with built-in post-training logic, requiring
-            only parameter configuration.
+        """Create and start a TrainJob. 
+        
+        You can configure the TrainJob using one of these trainer types:
+        - `CustomTrainer`: Runs training with a user-defined function.
+        - `CustomTrainerContainer`: Runs training with a user-defined container image.
+        - `BuiltinTrainer`: Uses a predefined trainer with built-in logic.
 
         Args:
-            runtime: Optional reference to one of the existing runtimes. It can accept the runtime
-                name or Runtime object from the `get_runtime()` API.
-                Defaults to the torch-distributed runtime if not provided.
-            initializer: Optional configuration for the dataset and model initializers.
-            trainer: Optional configuration for a CustomTrainer, CustomTrainerContainer, or
-                BuiltinTrainer. If not specified, the TrainJob will use the
-                runtime's default values.
-            options: Optional list of configuration options to apply to the TrainJob.
-                Options can be imported from kubeflow.trainer.options.
+            runtime: Reference to an existing Training Runtime. Accepts a 
+                runtime name (str) or a Runtime object. Defaults to the 
+                "torch-distributed" runtime if not provided.
+            initializer: Optional configuration for dataset and model 
+                initializers.
+            trainer: Configuration for the trainer. If not specified, the 
+                TrainJob uses the Training Runtime's default values.
+            options: Optional list of configuration options to apply to the 
+                TrainJob. Import options from `kubeflow.trainer.options`.
 
         Returns:
-            The unique name of the TrainJob that has been generated.
+            str: The unique name of the generated TrainJob.
 
         Raises:
-            ValueError: Input arguments are invalid.
-            TimeoutError: Timeout to create TrainJobs.
-            RuntimeError: Failed to create TrainJobs.
+            ValueError: If the input arguments are invalid.
+            TimeoutError: If the request to create the TrainJob times out.
+            RuntimeError: If the backend fails to create the TrainJob.
+
+        Example:
+            from kubeflow.trainer import TrainerClient, types
+
+            def train_func(parameters):
+                # Your training logic here
+                print(f"Training with parameters: {parameters}")
+
+            client = TrainerClient()
+            job_name = client.train(
+                runtime="torch-distributed",
+                trainer=types.CustomTrainer(func=train_func)
+            )
+            print(f"Started job: {job_name}")
         """
         return self.backend.train(
             runtime=runtime,
@@ -147,33 +203,52 @@ class TrainerClient:
         )
 
     def list_jobs(self, runtime: Optional[types.Runtime] = None) -> list[types.TrainJob]:
-        """List of the created TrainJobs. If a runtime is specified, only TrainJobs associated with
+        """List the generated TrainJobs. 
+        
+        If a Training Runtime is specified, only TrainJobs associated with 
         that runtime are returned.
 
         Args:
-            runtime: Reference to one of the existing runtimes.
+            runtime: Optional reference to an existing Training Runtime object 
+                to filter TrainJobs.
 
         Returns:
-            List of created TrainJobs. If no TrainJob exist, an empty list is returned.
+            list[kubeflow.trainer.types.TrainJob]: A list of generated 
+                TrainJob objects. If no jobs exist, an empty list is returned.
 
         Raises:
-            TimeoutError: Timeout to list TrainJobs.
-            RuntimeError: Failed to list TrainJobs.
+            TimeoutError: If the request to list TrainJobs times out.
+            RuntimeError: If the backend fails to list TrainJobs.
+
+        Example:
+            from kubeflow.trainer import TrainerClient
+
+            client = TrainerClient()
+            jobs = client.list_jobs()
+            for job in jobs:
+                print(f"Job Name: {job.name}, Status: {job.status}")
         """
         return self.backend.list_jobs(runtime=runtime)
 
     def get_job(self, name: str) -> types.TrainJob:
-        """Get the TrainJob object
+        """Get information about a specific TrainJob.
 
         Args:
-            name: Name of the TrainJob.
+            name: The unique name of the TrainJob.
 
         Returns:
-            A TrainJob object.
+            kubeflow.trainer.types.TrainJob: The TrainJob object.
 
         Raises:
-            TimeoutError: Timeout to get a TrainJob.
-            RuntimeError: Failed to get a TrainJob.
+            TimeoutError: If the request to retrieve the job times out.
+            RuntimeError: If the backend fails to retrieve the job.
+
+        Example:
+            from kubeflow.trainer import TrainerClient
+
+            client = TrainerClient()
+            job = client.get_job(name="my-training-job-abc123")
+            print(f"Job Status: {job.status}")
         """
 
         return self.backend.get_job(name=name)
@@ -186,45 +261,53 @@ class TrainerClient:
     ) -> Iterator[str]:
         """Get logs from a specific step of a TrainJob.
 
-        You can watch for the logs in realtime as follows:
-        ```python
-        from kubeflow.trainer import TrainerClient
-
-        for logline in TrainerClient().get_job_logs(name="s8d44aa4fb6d", follow=True):
-            print(logline)
-        ```
-
         Args:
-            name: Name of the TrainJob.
-            step: Step of the TrainJob to collect logs from, like dataset-initializer or node-0.
-            follow: Whether to stream logs in realtime as they are produced.
+            name: The unique name of the TrainJob.
+            step: The step of the TrainJob to collect logs from (e.g., 
+                "dataset-initializer" or "node-0"). Defaults to "node-0".
+            follow: Whether to stream logs in realtime as they are produced. 
+                Defaults to False.
 
         Returns:
-            Iterator of log lines.
-
+            Iterator[str]: An iterator yielding log lines as strings.
 
         Raises:
-            TimeoutError: Timeout to get a TrainJob.
-            RuntimeError: Failed to get a TrainJob.
+            TimeoutError: If the request to retrieve logs times out.
+            RuntimeError: If the backend fails to retrieve logs.
+
+        Example:
+            from kubeflow.trainer import TrainerClient
+
+            client = TrainerClient()
+            for log_line in client.get_job_logs(name="my-job", follow=True):
+                print(log_line)
         """
         return self.backend.get_job_logs(name=name, follow=follow, step=step)
 
     def get_job_events(self, name: str) -> list[types.Event]:
-        """Get events for a TrainJob.
+        """Get Kubernetes events associated with a TrainJob.
 
-        This provides additional clarity about the state of the TrainJob
-        when logs alone are not sufficient. Events include information about
-        pod state changes, errors, and other significant occurrences.
+        Events provide additional clarity about the state of the TrainJob, 
+        such as pod state changes, errors, and other significant occurrences.
 
         Args:
-            name: Name of the TrainJob.
+            name: The unique name of the TrainJob.
 
         Returns:
-            A list of Event objects associated with the TrainJob.
+            list[kubeflow.trainer.types.Event]: A list of Event objects 
+                associated with the TrainJob.
 
         Raises:
-            TimeoutError: Timeout to get a TrainJob events.
-            RuntimeError: Failed to get a TrainJob events.
+            TimeoutError: If the request to retrieve events times out.
+            RuntimeError: If the backend fails to retrieve events.
+
+        Example:
+            from kubeflow.trainer import TrainerClient
+
+            client = TrainerClient()
+            events = client.get_job_events(name="my-job")
+            for event in events:
+                print(f"Event: {event.message} ({event.reason})")
         """
         return self.backend.get_job_events(name=name)
 
@@ -239,22 +322,35 @@ class TrainerClient:
         """Wait for a TrainJob to reach a desired status.
 
         Args:
-            name: Name of the TrainJob.
-            status: Expected statuses. Must be a subset of Created, Running, Complete, and
-                Failed statuses.
-            timeout: Maximum number of seconds to wait for the TrainJob to reach one of the
-                expected statuses.
-            polling_interval: The polling interval in seconds to check TrainJob status.
-            callbacks: Optional list of callback functions to be invoked after each polling
-                interval. Each callback should accept a single argument: the TrainJob object.
+            name: The unique name of the TrainJob.
+            status: A set of expected statuses to wait for (e.g., {"Complete"}). 
+                Must be a subset of "Created", "Running", "Complete", and "Failed".
+            timeout: Maximum number of seconds to wait. Defaults to 600.
+            polling_interval: Seconds to wait between status checks. Defaults to 2.
+            callbacks: Optional list of callback functions to invoke after each 
+                poll. Each callback accepts the `TrainJob` object as an argument.
 
         Returns:
-            A TrainJob object that reaches the desired status.
+            kubeflow.trainer.types.TrainJob: The TrainJob object after reaching 
+                the desired status.
 
         Raises:
-            ValueError: The input values are incorrect.
-            RuntimeError: Failed to get TrainJob or TrainJob reaches unexpected Failed status.
-            TimeoutError: Timeout to wait for TrainJob status.
+            ValueError: If the input values (e.g., status) are invalid.
+            RuntimeError: If the job reaches an unexpected "Failed" status or 
+                the client fails to get the status.
+            TimeoutError: If the job does not reach the desired status within 
+                the timeout period.
+
+        Example:
+            from kubeflow.trainer import TrainerClient
+            from kubeflow.trainer.constants import constants
+
+            client = TrainerClient()
+            job = client.wait_for_job_status(
+                name="my-job", 
+                status={constants.TRAINJOB_COMPLETE}
+            )
+            print(f"Job finished with status: {job.status}")
         """
         return self.backend.wait_for_job_status(
             name=name,
@@ -265,13 +361,19 @@ class TrainerClient:
         )
 
     def delete_job(self, name: str):
-        """Delete the TrainJob.
+        """Delete a TrainJob.
 
         Args:
-            name: Name of the TrainJob.
+            name: The unique name of the TrainJob to delete.
 
         Raises:
-            TimeoutError: Timeout to delete TrainJob.
-            RuntimeError: Failed to delete TrainJob.
+            TimeoutError: If the request to delete the job times out.
+            RuntimeError: If the backend fails to delete the TrainJob.
+
+        Example:
+            from kubeflow.trainer import TrainerClient
+
+            client = TrainerClient()
+            client.delete_job(name="my-job")
         """
         return self.backend.delete_job(name=name)
