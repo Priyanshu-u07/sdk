@@ -43,6 +43,7 @@ spark = [
     # Match major.minor to SparkConnect server image (see kubeflow.spark.backends.kubernetes.constants)
     # Use [connect] extra to get compatible grpcio, pandas, pyarrow versions automatically
     "pyspark[connect]==3.4.1",
+    "kubeflow-spark-api>=2.4.0",
 ]
 hub = [
   "model-registry>=0.3.6",
@@ -64,6 +65,7 @@ dev = [
   "coverage>=7.0",
   "kubeflow_trainer_api@git+https://github.com/kubeflow/trainer.git@master#subdirectory=api/python_api",
   "kubeflow_katib_api@git+https://github.com/kubeflow/katib.git@master#subdirectory=api/python_api",
+  "kubeflow_spark_api@git+https://github.com/kubeflow/spark-operator.git@master#subdirectory=api/python_api",
   "ruff>=0.12.2",
   "pre-commit>=4.2.0",
   "PyGithub>=2.7.0",
