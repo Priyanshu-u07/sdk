@@ -119,12 +119,8 @@ def get_runtime_trainer(
     if devices := get_container_devices(trainer_container.resources):
         trainer.device, trainer.device_count = devices
 
-    # Torch and MPI plugins override accelerator count.
-    if ml_policy.torch and ml_policy.torch.num_proc_per_node:
-        num_proc = ml_policy.torch.num_proc_per_node.actual_instance
-        if isinstance(num_proc, int):
-            trainer.device_count = str(num_proc)
-    elif ml_policy.mpi and ml_policy.mpi.num_proc_per_node:
+    # MPI plugin overrides accelerator count.
+    if ml_policy.mpi and ml_policy.mpi.num_proc_per_node:
         trainer.device_count = str(ml_policy.mpi.num_proc_per_node)
 
     # Multiply accelerator_count by the number of nodes.
@@ -138,7 +134,7 @@ def get_runtime_trainer(
     # Set the Trainer entrypoint.
     if framework == types.TORCH_TUNE:
         trainer.set_command(constants.TORCH_TUNE_COMMAND)
-    elif ml_policy.torch:
+    elif ml_policy.torch is not None:
         trainer.set_command(constants.TORCH_COMMAND)
     elif ml_policy.mpi:
         trainer.set_command(constants.MPI_COMMAND)
@@ -267,8 +263,11 @@ def get_script_for_python_packages(
     """
     Get init script to install Python packages from the given pip index URLs.
     """
-    # Quote package names and URLs with shlex.quote() to prevent shell injection;
-    # each value becomes a single safe shell token when expanded inside the bash script.
+    # Quote package names and URLs with shlex.quote() to prevent shell injection.
+    # Use a bash array so that quotes are interpreted during array initialization;
+    # storing shlex-quoted values in a plain string variable breaks because bash
+    # does not re-interpret quotes during variable expansion (e.g. packages with
+    # extras like 'transformers[torch]' would be passed to pip with literal quotes).
     packages_str = " ".join(shlex.quote(pkg) for pkg in packages_to_install)
 
     # first url will be the index-url.
@@ -293,19 +292,19 @@ def get_script_for_python_packages(
     # on success we emit a single concise confirmation line.
     script_for_python_packages = header_script + textwrap.dedent(
         f"""
-        PACKAGES="{packages_str}"
-        PIP_OPTS="{options_str}"
+        PACKAGES=({packages_str})
+        PIP_OPTS=({options_str})
         LOG_FILE="{install_log_file}"
         rm -f "$LOG_FILE"
 
-        if PIP_DISABLE_PIP_VERSION_CHECK=1 python -m pip install --quiet \\
-            --no-warn-script-location $PIP_OPTS --user $PACKAGES >"$LOG_FILE" 2>&1; then
-            echo "Successfully installed Python packages: $PACKAGES"
-        elif PIP_DISABLE_PIP_VERSION_CHECK=1 python -m pip install --quiet \\
-            --no-warn-script-location $PIP_OPTS $PACKAGES >>"$LOG_FILE" 2>&1; then
-            echo "Successfully installed Python packages: $PACKAGES"
+        if PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_BREAK_SYSTEM_PACKAGES=1 python -m pip install --quiet \\
+            --no-warn-script-location "${{PIP_OPTS[@]}}" --user "${{PACKAGES[@]}}" >"$LOG_FILE" 2>&1; then
+            echo "Successfully installed Python packages: ${{PACKAGES[*]}}"
+        elif PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_BREAK_SYSTEM_PACKAGES=1 python -m pip install --quiet \\
+            --no-warn-script-location "${{PIP_OPTS[@]}}" "${{PACKAGES[@]}}" >>"$LOG_FILE" 2>&1; then
+            echo "Successfully installed Python packages: ${{PACKAGES[*]}}"
         else
-            echo "ERROR: Failed to install Python packages: $PACKAGES" >&2
+            echo "ERROR: Failed to install Python packages: ${{PACKAGES[*]}}" >&2
             cat "$LOG_FILE" >&2
             exit 1
         fi
